@@ -1,0 +1,11 @@
+Before Saturday:
+- Validate model
+- Error handling / robustness
+•- Check exact reference numbers
+
+After Saturday:
+- Implement full conditional expression parser
+- More robust uses-____ checking for variables
+- Nested variable interpolations
+- Remove non-taccall support
+- For each participant and for each message rules
