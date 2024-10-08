@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset=utf-8>
+    <meta name=viewport content="width=device-width, initial-scale=1.0">
+    <title>Log</title>
+    <script>
+      window.addEventListener('load', function() {
+        let have = 0
+        function connect() {
+          const ws = new WebSocket('/ws/log?have='+have, ['log'])
+          ws.addEventListener('open', function() {
+            document.getElementById('reconnecting').style.display = 'none'
+          })
+          ws.addEventListener('message', function(evt) {
+	    have += evt.data.length
+	    const atBottom = window.innerHeight + window.pageYOffset >= document.body.offsetHeight
+            document.getElementById('log').innerHTML += evt.data
+	    if (atBottom) setTimeout(function() {
+	      window.scrollTo(0, document.body.scrollHeight)
+            }, 0)
+          })
+          ws.addEventListener('error', function(evt) {
+            console.error(evt)
+          })
+          ws.addEventListener('close', function() {
+            document.getElementById('reconnecting').style.display = null
+            window.setTimeout(connect, 1000)
+          })
+        }
+        connect()
+      })
+    </script>
+    <style>
+      #log {
+        font-family: Go Mono, Courier, monospace;
+        white-space: pre;
+      }
+      .error {
+        color: red;
+      }
+      .problem, .warning {
+        color: orange;
+      }
+      #reconnecting {
+        font-family: Arial, Helvetica, sans-serif;
+        font-style: italic;
+        color: red;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="log"></div>
+    <div id="reconnecting">Waiting for connection to exercise server...</div>
+  </body>
+</html>

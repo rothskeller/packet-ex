@@ -1,11 +1,8 @@
-Before Saturday:
-- Validate model
-- Error handling / robustness
-•- Check exact reference numbers
+Test the fix to the crash when the same message is received twice.
+Consider better handling for resent messages.
+Find a better way to correlate incoming voice alert to the event where it should
+be recorded.
 
-After Saturday:
-- Implement full conditional expression parser
-- More robust uses-____ checking for variables
-- Nested variable interpolations
-- Remove non-taccall support
-- For each participant and for each message rules
+Make it hard to copy/paste from emailed inject
+Auto-print messages
+Check for "P" suffix on P2 candidate message numbers

@@ -1,0 +1,47 @@
+Packet Exercise Engine
+
+Development of the packet exercise engine has been fraught, and has been put on
+hold.  This file describes the current, incomplete state.
+
+The version used for the 2023-09-23 county-wide exercise is tagged v2023-09-23,
+and is also at origin/master since nothing since then has been pushed to github.
+While functional, it had a number of issues, and there were a number of
+desirable improvements as well.
+
+My first attempt was to enhance the YAML format used by v2023-09-23, but that
+proved too limiting (branch "master"), so I eventually moved to a DSL approach.
+I couldn't find a way to make it flexible enough, so I abandoned it (branch
+"dsl") and started working on a generic language rather than a DSL.  But it
+turned out I really need the domain knowledge built in in order to make the
+thing at all usable, so I abandoned that (branch "language") and started over.
+
+The current approach (branch "take4") is back to a data-driven approach rather
+than a language approach.  I found a way to express virtually all of the
+flexibility I wanted in a data definition, which is described in MANUAL.md and
+fully implemented in package definition.  2023-09-23.pktex is a description of
+the 2023-09-23 exercise in this definition format; I have hopes of using it and
+the recorded messages in some sort of replay mode for testing.
+
+I also defined the state that needs to be maintained, in package state.  The
+database functions there are incomplete; they're being added as needs for them
+are identified.  It's using the same sqlite access methods as are used by
+schola8m.
+
+Then I started implementing the actual actions, in package action:
+  - NewDefinition, called whenever the exercise definition changes (including on
+    first startup)
+  - ClockTick, called once per minute
+  - ReceiveMessage, called whenever a message is received (partially
+    implemented)
+
+The problem at this point is that lots of code has been written in package
+action without any sound way to test it.  The design approach needs more
+modularity so that the code is readily testable.
+
+The work is being set aside because I have higher priorities at the moment, and
+it's not clear when or if this will be needed.
+
+Folders _old, engine, expression, make-messages, model, monitor, and variables,
+and files DESIGN.md, MANUAL2.md, main.go, and TODO, are not used in the current
+attempt.  They are either parts of the original v2023-09-23, or vestiges of
+earlier attempts.

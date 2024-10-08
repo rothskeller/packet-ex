@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset=utf-8>
+    <meta name=viewport content="width=device-width, initial-scale=1.0">
+    <title>Monitor</title>
+    <script>
+      window.addEventListener('load', function() {
+        const reconnecting = document.getElementById('reconnecting')
+        const header = document.getElementById('header')
+        const time = document.getElementById('time')
+        const table = document.getElementById('table')
+        const rheads = document.getElementById('rheads')
+        const cheads = document.getElementById('cheads')
+        const cells = document.getElementById('cells')
+        const footer = document.getElementById('footer')
+
+        // Ensure that rheads, cheads, and cells all scroll together.
+        cells.addEventListener('scroll', () => {
+          rheads.scrollTop = cells.scrollTop
+          cheads.scrollLeft = cells.scrollLeft
+        })
+        rheads.addEventListener('scroll', () => {
+          cells.scrollTop = rheads.scrollTop
+        })
+        cheads.addEventListener('scroll', () => {
+          cells.scrollLeft = cheads.scrollLeft
+        })
+
+        // Handle dialog boxes.
+        let showingDialog, dialogParent
+        function openDialog(target) {
+          dialogParent = target
+          while (dialogParent) {
+            for (let i = 0; i < dialogParent.children.length; i++) {
+              if (dialogParent.children.item(i).classList.contains('dialog')) {
+                showingDialog = dialogParent.children.item(i)
+                break
+              }
+            }
+            if (showingDialog) break
+            dialogParent = dialogParent.parentElement
+          }
+          if (!showingDialog) {
+            dialogParent = null
+            return false
+          }
+          dialogParent.classList.remove('new')
+          showingDialog.style.display = null
+          document.body.appendChild(showingDialog)
+          return true
+        }
+        function closeDialog() {
+          showingDialog.style.display = 'none'
+          dialogParent.appendChild(showingDialog)
+          showingDialog = dialogParent = null
+        }
+        function onClick(evt) {
+          if (showingDialog && showingDialog.contains(evt.target)) return
+          if (showingDialog && dialogParent.contains(evt.target)) {
+            evt.preventDefault()
+            closeDialog()
+            return
+          }
+          if (showingDialog) {
+            evt.preventDefault()
+            closeDialog()
+          }
+          if (openDialog(evt.target))
+            evt.preventDefault()
+        }
+        table.addEventListener('click', onClick)
+        footer.addEventListener('click', onClick)
+        // Can't set it on window itself; iOS Safari won't trigger on that.
+
+        // Connect to websocket and handle retrieved data.
+        function findCell(g, r, c) {
+          const grp = cells.children.item(g)
+          if (!grp) return null
+          const row = grp.children.item(r)
+          if (!row) return null
+          return row.children.item(c)
+        }
+        function connect() {
+          // Don't try to connect when tab is in background.
+          if (document.hidden) {
+            window.setTimeout(connect, 1000)
+            return
+          }
+          // Connect to the websocket.  When connected, remove the reconnecting
+          // message.  If an error occurs, log it.  (Errors are always followed
+          // by a close.)
+          const ws = new WebSocket('/ws', ['monitor'])
+          ws.addEventListener('open', () => { reconnecting.style.display = 'none' })
+          ws.addEventListener('error', console.error)
+          // When the connection is closed (which includes after an error or a
+          // failure to connect), hide/remove all data, show the reconnecting
+          // message, wait for one second, and try to reconnect.
+          ws.addEventListener('close', function() {
+            reconnecting.style.display = null
+            header.style.display = 'none'
+            rheads.style.display = 'none'
+            cheads.style.display = 'none'
+            cells.style.display = 'none'
+            rheads.innerHTML = ''
+            cheads.innerHTML = ''
+            cells.innerHTML = ''
+            if (showingDialog) {
+              closeDialog()
+            }
+            window.setTimeout(connect, 1000)
+          })
+
+          // Handle incoming messages.
+          ws.addEventListener('message', evt => {
+            const update = JSON.parse(evt.data)
+            // All messages update the clock.
+            if (update.Clock) time.textContent = update.Clock
+            // If we have a title, that means we have a new exercise definition.
+            // Clear out all old data and enable the display of new data.
+            if (update.Title) {
+              header.style.display = null
+              rheads.style.display = null
+              cheads.style.display = null
+              cells.style.display = null
+              title.textContent = update.Title
+              rheads.innerHTML = ''
+              cheads.innerHTML = ''
+              cells.innerHTML = ''
+            }
+            // Headings and gap rows are simply applied directly.
+            if (update.RHeads) rheads.innerHTML = update.RHeads
+            if (update.CHeads) cheads.innerHTML = update.CHeads
+            if (update.Grid) cells.innerHTML = update.Grid
+            // Walk through the list of cells.
+            if (!update.Cells) return
+            update.Cells.forEach(updateCell => {
+              let haveCell = findCell(updateCell.G, updateCell.R, updateCell.C)
+              if (!haveCell) return
+              const dialog = dialogParent == haveCell
+              if (dialog) closeDialog()
+              haveCell.innerHTML = updateCell.H
+              haveCell.className = 'cell'
+              if (updateCell.S) haveCell.classList.add(updateCell.S)
+              if (!updateCell.C) haveCell.classList.add('unknownStation')
+              if (!dialog && !update.Title) {
+                haveCell.classList.add('new')
+                table.classList.add('haveNew')
+              }
+              if (dialog) openDialog(haveCell)
+              if (updateCell.H && !updateCell.C) table.classList.add('haveUnkStn')
+              if (updateCell.H && !updateCell.G) table.classList.add('haveUnkMsg')
+            })
+          })
+        }
+        connect()
+      })
+
+      // Handle manual trigger requests.
+      function manualTrigger(type, station, name) {
+        if (type != 'alert' && type != 'deliver') {
+          if (!window.confirm('Are you sure you want to manually trigger '+type+' '+name+(station ? ' for '+station : '')+'?'))
+            return
+        }
+        const params = new URLSearchParams()
+        params.set('type', type)
+        params.set('station', station)
+        params.set('name', name)
+        fetch('/manualTrigger?'+params.toString(), { method: 'POST' })
+      }
+
+      // Clear "new" flags.
+      function clearNew() {
+        document.querySelectorAll('.new').forEach(elm => {
+          elm.classList.remove('new')
+        })
+        document.getElementById('table').classList.remove('haveNew')
+      }
+    </script>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        width: 100vw;
+        height: 100vh;
+        display: grid;
+        grid: max-content 1fr max-content / 100%;
+        gap: 2rem;
+        font-family: Arial, Helvetica, sans-serif;
+        line-height: 1;
+      }
+      #header {
+        margin: 0.5rem 0.75rem 0;
+        display: flex;
+        justify-content: space-between;
+        gap: 1rem;
+        font-size: 1.25rem;
+        font-weight: bold;
+      }
+      #time {
+        color: #00f;
+        font-variant-numeric: tabular-nums;
+      }
+      #table {
+        margin-inline: 0.75rem;
+        display: grid;
+        grid: max-content 1fr / max-content 1fr;
+        min-height: 0;
+      }
+      #table:not(.haveUnkStn) .unknownStation,
+      #table:not(.haveUnkMsg) .unknownMessage {
+        display: none;
+      }
+      #clearNew {
+        display: none;
+      }
+      #table.haveNew #clearNew {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+      }
+      #rheads {
+        grid-area: 2 / 1;
+        display: grid;
+        grid: auto-flow / max-content max-content;
+        gap: 0.75rem 0.5rem;
+        overflow-y: auto;
+      }
+      #rheads .group {
+        position: relative;
+        grid-column: 1 / 3;
+        display: grid;
+        grid: auto-flow 1.5rem / subgrid;
+        padding-inline: 2rem;
+        border: 1px solid #ccc;
+        align-items: center;
+      }
+      .groupName {
+        position: absolute;
+        left: 1.5rem;
+        width: calc(1.5rem * var(--span));
+        height: 1.5rem;
+        bottom: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        font-weight: bold;
+        transform-origin: bottom left;
+        transform: rotate(-90deg);
+      }
+      .eventName.ditto {
+        color: #888;
+        margin-left: 2rem;
+      }
+      #cheads {
+        grid-area: 1 / 2;
+        display: grid;
+        grid: max-content / auto-flow 8rem;
+        overflow-x: auto;
+        align-items: end;
+      }
+      .column {
+        text-align: center;
+        font-weight: bold;
+        padding-bottom: 0.5rem;
+      }
+      .column .fcc {
+        color: #888;
+      }
+      #cells {
+        grid-area: 2 / 2;
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+        align-items: start;
+        overflow: auto;
+      }
+      #cells .group {
+        display: flex;
+        flex-direction: column;
+        border: 1px solid #ccc;
+        border-left: none;
+      }
+      .event {
+        display: flex;
+      }
+      .cell {
+        height: 1.5rem;
+        width: 8rem;
+        display: flex;
+        align-items: center;
+      }
+      .cell svg {
+        width: 1.5rem;
+        height: 1rem;
+      }
+      .cell.error       { color: #f00; }
+      .cell.error svg   { fill:  #f00; }
+      .cell.warning     { color: #f0f; }
+      .cell.warning svg { fill:  #f0f; }
+      .cell.success     { color: #00f; }
+      .cell.success svg { fill:  #00f; }
+      .cell.pending     { color: #888; }
+      .cell.pending svg { fill:  #888; }
+      .cell.new {
+        background-color: #fc0;
+      }
+      .dialog {
+        position: absolute;
+        top: 0;
+        left: 0;
+        bottom: 0;
+        right: 0;
+        width: 33%;
+        max-width: 30rem;
+        height: 33%;
+        margin: auto;
+        padding: 0.5rem;
+        border: 2px solid #ccc;
+        border-radius: 0.5rem;
+        background-color: white;
+        overflow-y: auto;
+        line-height: 1.2;
+      }
+      #footer {
+        padding: 0.125rem 0.75rem;
+        display: flex;
+        justify-content: space-between;
+        background-color: #ddd;
+      }
+    </style>
+  </head>
+  <body>
+    <svg style="display:none">
+      <symbol id="clock" viewBox="0 0 525 514">
+        <path d="M 465 257 C 455 330 437 361 465 295 L 437 361 C 393 418 361 437 419 393 C 293 465 257 465 328 455 C 185 455 153 437 220 465 C 95 393 77 361 120 418 C 49 295 49 257 58 330 C 58 185 77 153 49 219 C 120 97 153 77 95 122 C 220 49 257 49 185 59 C 328 59 361 77 293 49 C 419 122 437 153 393 97 C 465 219 465 257 455 185 z M 1 257 C 13 347 35 385 1 304 L 35 385 C 89 455 129 479 57 424 C 212 513 257 513 169 501 C 344 501 385 479 301 513 C 456 424 479 385 425 455 C 512 304 513 257 501 347 C 501 168 479 129 512 211 C 425 59 385 35 456 91 C 301 1 257 1 344 13 C 169 13 129 35 212 1 C 57 91 35 129 89 59 C 1 211 1 257 13 168 z M 233 121 L 233 257 C 236 273 244 277 233 266 L 340 341 C 363 346 373 334 352 349 C 378 311 366 301 380 322 L 281 244 L 281 121 C 271 99 257 97 279 107 C 234 107 233 121 242 99 z"/>
+      </symbol>
+      <symbol id="check" viewBox="0 0 512 512">
+        <path d="M173.898 439.404l-166.4-166.4c-9.997-9.997-9.997-26.206 0-36.204l36.203-36.204c9.997-9.998 26.207-9.998 36.204 0L192 312.69 432.095 72.596c9.997-9.997 26.207-9.997 36.204 0l36.203 36.204c9.997 9.997 9.997 26.206 0 36.204l-294.4 294.401c-9.998 9.997-26.207 9.997-36.204-.001z"/>
+      </symbol>
+      <symbol id="cross" viewBox="0 0 352 512">
+        <path d="M242.72 256l100.07-100.07c12.28-12.28 12.28-32.19 0-44.48l-22.24-22.24c-12.28-12.28-32.19-12.28-44.48 0L176 189.28 75.93 89.21c-12.28-12.28-32.19-12.28-44.48 0L9.21 111.45c-12.28 12.28-12.28 32.19 0 44.48L109.28 256 9.21 356.07c-12.28 12.28-12.28 32.19 0 44.48l22.24 22.24c12.28 12.28 32.2 12.28 44.48 0L176 322.72l100.07 100.07c12.28 12.28 32.2 12.28 44.48 0l22.24-22.24c12.28-12.28 12.28-32.19 0-44.48L242.72 256z"/>
+      </symbol>
+      <symbol id="warning" viewBox="0 0 512 512">
+        <path d="M 249 52 C 253 48 257 48 251 50 C 263 50 265 52 260 48 L 463 378 C 465 384 465 386 464 381 C 459 400 451 400 464 395 L 64 400 C 49 395 49 386 54 400 C 49 380 51 378 49 383 L 249 52 z M 208 27 L 10 353 C 1 374 1 386 4 363 C 7 418 19 430 1 404 C 46 447 64 448 31 441 L 451 448 C 483 441 495 430 468 447 C 512 404 513 386 506 418 C 510 363 504 353 513 374 L 306 27 C 278 1 257 0 294 10 C 220 10 208 27 236 1 z M 289 336 C 286 319 280 313 289 327 L 280 313 C 266 304 257 304 274 307 C 240 307 234 313 247 304 C 225 327 225 336 228 319 C 228 353 234 359 225 346 C 247 368 257 368 240 365 C 274 365 280 359 266 368 C 289 346 289 336 286 353 z M 281 152 C 271 130 257 128 279 138 C 234 138 233 152 242 130 L 233 248 C 242 271 257 272 234 263 C 279 263 281 248 271 271 L 281 152 z"/>
+      </symbol>
+    </svg>
+    <div id="reconnecting">Waiting for connection to exercise server...</div>
+    <div id="header">
+      <div id="title"></div>
+      <div id="time"></div>
+    </div>
+    <div id="table">
+      <div id="clearNew">
+        <button onclick="javascript:clearNew()">Clear Highlights</button>
+      </div>
+      <div id="rheads"></div>
+      <div id="cheads"></div>
+      <div id="cells"></div>
+    </div>
+    <div id="footer">
+      <div>Packet Exercise Engine v0.2.0 de KC6RSC</div>
+      <div>
+        <span>
+          <a href="#">Overview QR</a>
+          <span class="dialog" style="display:none"><img src="/qrcode.png"></span>
+        </span> • <a href="/log" target="_blank">Log Viewer</a>
+      </div>
+    </div>
+  </body>
+</html>
